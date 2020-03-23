@@ -22,7 +22,7 @@ var (
 	brokerList = flag.String("brokers", "localhost:9092", "The comma separated list of brokers in the Kafka cluster")
 	topic      = flag.String("topic", "", "The topic to consume")
 	sleep      = flag.Int("sleep", 1000, "The number of nanoseconds to sleep between producing messages")
-	batchSize  = flag.Int("batch-size", 1000000, "The number of messages to produce")
+	messages   = flag.Int("messages", 1000000, "The number of messages to produce")
 
 	verbose = flag.Bool("verbose", false, "Whether to turn on sarama logging")
 
@@ -50,7 +50,9 @@ func main() {
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 	config.Producer.Return.Errors = true
+	config.Producer.RequiredAcks = sarama.WaitForAll
 	config.Consumer.Return.Errors = true
+	config.Version = sarama.V2_0_0_0
 
 	client, err := sarama.NewClient(strings.Split(*brokerList, ","), config)
 	if err != nil {
@@ -112,10 +114,10 @@ func expectationProducer(p sarama.AsyncProducer, expectations chan<- *sarama.Pro
 	}()
 
 	go monitor()
-	logger.Printf("Producing %d messages...\n", *batchSize)
+	logger.Printf("Producing %d messages...\n", *messages)
 
 ProducerLoop:
-	for i := 0; i < *batchSize; i++ {
+	for i := 0; i < *messages; i++ {
 		msg := &sarama.ProducerMessage{
 			Topic:    *topic,
 			Key:      sarama.StringEncoder(fmt.Sprintf("%d", i)),
@@ -198,7 +200,7 @@ func partitionExpectationConsumer(pc sarama.PartitionConsumer, expectations <-ch
 		msg := <-pc.Messages()
 
 		if msg.Offset != expectation.Offset {
-			fmt.Printf("Unexpected offset %d!\n", msg.Offset)
+			fmt.Printf("Unexpected offset %d! - expected: %d \n", msg.Offset, expectation.Offset)
 		}
 
 		key, _ := expectation.Key.Encode()
